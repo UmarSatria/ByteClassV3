@@ -4,6 +4,8 @@
  */
 package byteclassv2;
 
+import java.awt.Desktop;
+import java.net.URI;
 import javax.swing.JOptionPane;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -11,6 +13,10 @@ import java.sql.ResultSet;
 import java.sql.DriverManager;
 import javax.swing.table.DefaultTableModel;
 import java.sql.SQLException;
+import javax.swing.JLabel;
+import javax.swing.JTable;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumn;
 
 /**
  *
@@ -53,7 +59,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         // Inisialisasi model tabel dan set ke tblCourse
         tableModel = new DefaultTableModel();
         tableModel.addColumn("ID");
-        tableModel.addColumn("Category Name");
+        tableModel.addColumn("Category ID");
         tableModel.addColumn("Course Name");
         tableModel.addColumn("Course Material");
         tableModel.addColumn("Link");
@@ -61,30 +67,57 @@ public class AdminDashboard extends javax.swing.JFrame {
     }
 
     public void loadCourses() {
-        // Kosongkan tabel sebelum mengisi data baru
-        tableModel.setRowCount(0);
+    // Kosongkan tabel sebelum mengisi data baru
+    tableModel.setRowCount(0);
 
-        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/byteclass", "root", ""); PreparedStatement pst = conn.prepareStatement("SELECT * FROM courses"); ResultSet rs = pst.executeQuery()) {
+    try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/byteclass", "root", ""); 
+         PreparedStatement pst = conn.prepareStatement("SELECT * FROM courses"); 
+         ResultSet rs = pst.executeQuery()) {
 
-            while (rs.next()) {
-                Object[] data = {
-                    rs.getInt("id"),
-                    rs.getString("course_name"),
-                    rs.getString("course_material"),
-                    rs.getString("link")
-                };
-                tableModel.addRow(data);
-            }
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
+        while (rs.next()) {
+            Object[] data = {
+                rs.getInt("id"),
+                rs.getString("id_category"),
+                rs.getString("course_name"),
+                rs.getString("course_material"),
+                rs.getString("link")  // Link yang akan ditampilkan
+            };
+            tableModel.addRow(data);
         }
-    }
 
-    private void clearFields() {
-        txtTitle.setText("");
-        txtMat.setText("");
-        txtLink.setText("");
+        // Menambahkan renderer khusus untuk kolom link
+        TableColumn linkColumn = tblCourse.getColumnModel().getColumn(4); // Kolom ke-5 untuk link
+        linkColumn.setCellRenderer(new LinkCellRenderer());
+        
+    } catch (SQLException e) {
+        JOptionPane.showMessageDialog(null, "Error: " + e.getMessage());
     }
+}
+
+// Custom Renderer untuk membuat link dapat diklik
+class LinkCellRenderer extends DefaultTableCellRenderer {
+    @Override
+    public java.awt.Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+        JLabel label = new JLabel();
+        label.setText("<html><a href=''>" + value.toString() + "</a></html>");  // Membuat teks link
+
+        // Menambahkan MouseListener untuk mendeteksi klik pada link
+        label.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                try {
+                    // Membuka URL di browser default
+                    Desktop desktop = Desktop.getDesktop();
+                    desktop.browse(new URI(value.toString())); // Membuka link di browser
+                } catch (Exception ex) {
+                    java.util.logging.Logger.getLogger(LinkCellRenderer.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+                }
+            }
+        });
+
+        return label;
+    }
+}
 
     /**
      * This method is called from within the constructor to initialize the form.
@@ -335,22 +368,22 @@ public class AdminDashboard extends javax.swing.JFrame {
         Koneksi c = new Koneksi();
         try (Connection conn = c.getConn()) {
             // Mengambil id_category berdasarkan nama_kategori yang dipilih
-            String queryGetCategoryId = "SELECT id_category FROM category WHERE nama_kategori = ?";
+            String queryGetCategoryId = "SELECT id FROM category WHERE nama_kategori = ?";
             PreparedStatement psCategory = conn.prepareStatement(queryGetCategoryId);
             psCategory.setString(1, selectedCategory);
             ResultSet rs = psCategory.executeQuery();
 
             if (rs.next()) {
-                int idCategory = rs.getInt("id_category");  // Mendapatkan id_category
-
+                int idCategory = rs.getInt("id");  // Mendapatkan id_category
                 // Menambahkan data ke tabel course
-                String queryInsertCourse = "INSERT INTO courses (id_category, course_name, course_material, link) VALUES (?, ?, ?, ?)";
+                String queryInsertCourse = "INSERT INTO courses (id_category, course_material, course_name, link) VALUES (?, ?, ?, ?)";
                 PreparedStatement psCourse = conn.prepareStatement(queryInsertCourse);
                 psCourse.setInt(1, idCategory);  // Memasukkan id_category
-                psCourse.setString(2, courseName);  // Memasukkan nama course
-                psCourse.setString(3, courseMaterial);  // Memasukkan materi course
+                psCourse.setString(2, courseMaterial);  // Memasukkan nama course
+                psCourse.setString(3, courseName);  // Memasukkan materi course
                 psCourse.setString(4, link);  // Memasukkan link
                 psCourse.executeUpdate();
+                clearFields();
 
                 JOptionPane.showMessageDialog(null, "Course berhasil ditambahkan!");
             } else {
@@ -364,18 +397,20 @@ public class AdminDashboard extends javax.swing.JFrame {
 
     private void tblCourseMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_tblCourseMouseClicked
         // TODO add your handling code here:
-      int selectedRow = tblCourse.getSelectedRow();
+        int selectedRow = tblCourse.getSelectedRow();
 
         // Memeriksa apakah ada baris yang dipilih
         if (selectedRow != -1) {
             // Mengambil data dari tabel
-            String courseName = tblCourse.getValueAt(selectedRow, 1).toString(); // Kolom kedua
-            String courseMaterial = tblCourse.getValueAt(selectedRow, 2).toString(); // Kolom ketiga
-            String link = tblCourse.getValueAt(selectedRow, 3).toString(); // Kolom keempat
+            String categoryId = tblCourse.getValueAt(selectedRow, 1).toString(); // Kolom kedua
+            String courseMaterial = tblCourse.getValueAt(selectedRow, 3).toString(); // Kolom ketiga
+            String courseName = tblCourse.getValueAt(selectedRow, 2).toString(); // Kolom kedua
+            String link = tblCourse.getValueAt(selectedRow, 4).toString(); // Kolom keempat
 
             // Mengisi data ke dalam field input
-            txtTitle.setText(courseName);
+            jComboBox2.setSelectedItem(categoryId);
             txtMat.setText(courseMaterial);
+            txtTitle.setText(courseName);
             txtLink.setText(link);
         }
     }//GEN-LAST:event_tblCourseMouseClicked
@@ -403,13 +438,13 @@ public class AdminDashboard extends javax.swing.JFrame {
             // Mengambil id_category berdasarkan nama_kategori yang dipilih
             int idCategory = -1; // Inisialisasi ID kategori
 
-            try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/byteclass", "root", ""); PreparedStatement psCategory = conn.prepareStatement("SELECT id_category FROM category WHERE nama_kategori = ?")) {
+            try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/byteclass", "root", ""); PreparedStatement psCategory = conn.prepareStatement("SELECT id FROM category WHERE nama_kategori = ?")) {
 
                 psCategory.setString(1, selectedCategory);
                 ResultSet rsCategory = psCategory.executeQuery();
 
                 if (rsCategory.next()) {
-                    idCategory = rsCategory.getInt("id_category"); // Mendapatkan id_category
+                    idCategory = rsCategory.getInt("id"); // Mendapatkan id_category
                 } else {
                     JOptionPane.showMessageDialog(this, "Selected category not found!");
                     return; // Hentikan eksekusi jika kategori tidak ditemukan
@@ -434,7 +469,6 @@ public class AdminDashboard extends javax.swing.JFrame {
                 if (result > 0) {
                     JOptionPane.showMessageDialog(this, "Course updated successfully!");
                     loadCourses(); // Memuat ulang data kursus
-                    clearFields(); // Mengosongkan field input
                 } else {
                     JOptionPane.showMessageDialog(this, "Failed to update course.");
                 }
@@ -505,7 +539,7 @@ public class AdminDashboard extends javax.swing.JFrame {
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jComboBox2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jComboBox2ActionPerformed
-//        // TODO add your handling code here:
+//     // TODO add your handling code here:
 //         Koneksi c = new Koneksi();  // Membuat koneksi
 //    try (Connection conn = c.getConn()) {
 //        String query = "SELECT nama_kategori FROM category";  // Mengambil nama_kategori dari table category
